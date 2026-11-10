@@ -231,20 +231,20 @@ exclude_patterns = [
 ]
 
 # Mock out modules that are not available on RTD
+# Warp stays real: generated kernels resolve concrete element layouts during import,
+# without compiling or launching a GPU kernel. Warp is a normal project dependency.
 autodoc_mock_imports = [
     "torch",
     "torchvision",
     "matplotlib",
     "scipy",
     "carb",
-    "warp",
     "pxr",
     "isaacsim",
     "omni",
     "omni.kit",
     "omni.log",
     "omni.usd",
-    "omni.client",
     "omni.physx",
     "omni.physics",
     "ovphysx",
@@ -356,6 +356,10 @@ html_js_files = [
 ]
 
 html_theme_options = {
+    "announcement": (
+        '<a href="https://docs.nvidia.com/isaaclab">Explore our AI-friendly Fern documentation</a>'
+        " &mdash; Chat with AI about Isaac Lab and access machine-readable docs."
+    ),
     "path_to_docs": "docs/",
     "navbar_persistent": [],
     "collapse_navigation": True,

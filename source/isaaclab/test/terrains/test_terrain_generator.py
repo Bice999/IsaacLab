@@ -30,6 +30,7 @@ from isaaclab.terrains.height_field import (
     HfSteppingStonesTerrainCfg,
     HfWaveTerrainCfg,
 )
+from isaaclab.terrains.height_field.utils import height_field_to_mesh
 from isaaclab.terrains.trimesh.utils import make_box, make_cone, make_cylinder
 from isaaclab.utils.seed import configure_seed
 
@@ -188,6 +189,23 @@ def test_random_uniform_terrain_samples_every_pixel_with_border():
     np.testing.assert_allclose(np.unique(meshes[0].vertices[:, 2].round(6)), [0.0, 0.02, 0.04, 0.06, 0.08, 0.1])
 
 
+def test_height_field_generator_without_origin_raises_type_error():
+    """A height-field generator that returns no origin raises a TypeError and leaves the terrain size unchanged."""
+
+    @height_field_to_mesh
+    def flat_terrain(difficulty: float, cfg: HfRandomUniformTerrainCfg) -> np.ndarray:
+        return np.zeros((1, 1), dtype=np.int16)
+
+    cfg = HfRandomUniformTerrainCfg(
+        size=(2.0, 2.0), horizontal_scale=0.1, border_width=0.2, noise_range=(0.0, 0.0), noise_step=0.02
+    )
+
+    with pytest.raises(TypeError, match=r"'flat_terrain' must return \(height_field, origin\)"):
+        flat_terrain(0.5, cfg)
+
+    assert cfg.size == (2.0, 2.0)
+
+
 @pytest.mark.parametrize("size, border_width", [(4.6, 0.3), (4.67, 0.37)])
 def test_height_field_terrain_keeps_size_and_border_width(size, border_width):
     """The terrain and its flat border span every whole pixel of the configured size and border width."""
@@ -287,7 +305,7 @@ def test_generation_reproducibility(use_global_seed):
     configure_seed(seed)
 
     # create terrain generator
-    cfg = ROUGH_TERRAINS_CFG
+    cfg = ROUGH_TERRAINS_CFG.copy()
     cfg.use_cache = False
     cfg.seed = seed if use_global_seed else None
     terrain_generator = TerrainGenerator(cfg=cfg)
@@ -319,7 +337,7 @@ def test_generation_cache(output_dir, curriculum):
     when the terrain generator is created again.
     """
     # create terrain generator with cache enabled
-    cfg: TerrainGeneratorCfg = ROUGH_TERRAINS_CFG
+    cfg: TerrainGeneratorCfg = ROUGH_TERRAINS_CFG.copy()
     cfg.use_cache = True
     cfg.seed = 0
     cfg.cache_dir = output_dir
@@ -361,7 +379,7 @@ def test_generation_cache(output_dir, curriculum):
 def test_terrain_flat_patches():
     """Test the terrain size and the flat patches generation."""
     # create terrain generator
-    cfg = ROUGH_TERRAINS_CFG
+    cfg = ROUGH_TERRAINS_CFG.copy()
     # add flat patch configuration
     for _, sub_terrain_cfg in cfg.sub_terrains.items():
         sub_terrain_cfg.flat_patch_sampling = {

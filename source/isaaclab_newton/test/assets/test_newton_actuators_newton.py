@@ -53,7 +53,7 @@ from isaaclab.actuators import (
 )
 from isaaclab.actuators.actuator_net_cfg import ActuatorNetLSTMCfg, ActuatorNetMLPCfg
 from isaaclab.actuators.actuator_pd_cfg import RemotizedPDActuatorCfg
-from isaaclab.actuators.newton import read_group_parameter
+from isaaclab.actuators.newton import read_group_parameter, write_group_parameter
 from isaaclab.actuators.newton.kernels import sync_torque_telemetry
 from isaaclab.assets import ArticulationCfg
 from isaaclab.sim import SimulationContext, build_simulation_context
@@ -286,7 +286,7 @@ def _run(
     handles_dec = (
         use_newton_actuators
         and decimation > 1
-        and sim.backend_manager._is_all_graphable()
+        and sim.backend_manager.handles_decimation()
         and sim.backend_manager._decimation > 1
     )
 
@@ -503,6 +503,7 @@ def _make_target_mode_builder(
     sim._backend_registry = []
     monkeypatch.setattr(sim_utils.SimulationContext, "instance", lambda: sim)
     builder = sim.get_or_create_backend(NewtonBuilderCfg(physics_cfg=sim.cfg.physics))
+    sim.backend_manager = SimpleNamespace(builder=builder)
     inertia = wp.mat33(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
     parent = -1
     joint_ids = []
@@ -862,7 +863,7 @@ def test_write_data_to_sim_writes_joint_targets_in_backend_order(newton_run: _Ru
 
 
 def test_newton_native_actuator_gain_write_maps_public_joint_subset_to_backend(newton_run: _Run) -> None:
-    """Map selected public joint IDs to Newton-controller columns."""
+    """Map selected group-local joint IDs to Newton drive columns under a permuted public joint order."""
     articulation = newton_run.articulations["ideal_reordered"]
     assert articulation.joint_ordering is not None
     assert articulation.newton_actuator_adapter is not None
@@ -879,8 +880,9 @@ def test_newton_native_actuator_gain_write_maps_public_joint_subset_to_backend(n
     joint_ids = torch.tensor([1, 3, 4], device=articulation.device, dtype=torch.long)
     stiffness = torch.tensor([[101.0, 103.0, 104.0]], device=articulation.device)
 
-    with pytest.warns(DeprecationWarning, match="write_actuator_stiffness_to_sim"):
-        articulation.write_actuator_stiffness_to_sim(stiffness=stiffness, env_ids=env_ids, joint_ids=joint_ids)
+    write_group_parameter(
+        articulation.actuators, "legs", "drive", "kp", stiffness, env_ids=env_ids, joint_ids=joint_ids
+    )
 
     backend_joint_ids = torch.tensor(
         articulation.joint_ordering.user_to_backend_indices, device=articulation.device, dtype=torch.long
@@ -907,7 +909,7 @@ def test_randomize_actuator_gains_reaches_newton_controllers(newton_run: _Run) -
         "cartpole": (newton_run.articulations["cartpole"], "all_joints"),
     }
     legs = groups["legs"][0]
-    assert newton_run.sim.backend_manager._adapter is not None
+    assert newton_run.sim.backend_manager.backend.actuators is not None
 
     def gains(name: str) -> torch.Tensor:
         """Return the ``(kp, kd)`` gains of one articulation's actuator group, shape ``(2, num_envs, num_joints)``."""
@@ -950,7 +952,7 @@ def test_newton_state_reset_isolated_to_reset_env(newton_run: _Run) -> None:
     islands' actuators share its state buffers; their state is not part of this articulation's contract.
     """
     articulation = newton_run.articulations["delayed"]
-    adapter = newton_run.sim.backend_manager._adapter
+    adapter = newton_run.sim.backend_manager.backend.actuators
     assert adapter is not None
     own_actuators = []
     for group_name in articulation.actuators._native_group_names:

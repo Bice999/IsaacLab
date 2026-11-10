@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import warp as wp
@@ -67,11 +68,42 @@ def create_mock_newton_manager(
     mock_state = MagicMock()
     mock_control = MagicMock()
 
-    return MagicMock(
-        **{
-            "get_model.return_value": mock_model,
-            "get_state_0.return_value": mock_state,
-            "get_control.return_value": mock_control,
-            "get_dt.return_value": 0.01,
-        },
+    manager = MagicMock()
+    manager.backend = SimpleNamespace(
+        model=mock_model,
+        state_0=mock_state,
+        state_1=mock_state,
+        control=mock_control,
+        solver=None,
+        actuators=None,
+        dt=0.01,
+        state_version=0,
+        device=wp.get_device("cpu"),
+        transforms_may_change_on_graph_replay=False,
     )
+    return manager
+
+
+def backend_stub(**fields):
+    """Return a :class:`~isaaclab_newton.physics.NewtonBackend` holding only ``fields``, without a finalized model."""
+    from isaaclab_newton.physics import NewtonBackend  # noqa: PLC0415
+
+    backend = object.__new__(NewtonBackend)
+    backend.contact_sensors = {}
+    backend.contact_observables = None
+    backend.__dict__.update(fields)
+    return backend
+
+
+def solver_driver(solver_cls, cfg, native=None):
+    """Return a ``solver_cls`` driver of ``native`` for ``cfg``, without building a Newton solver.
+
+    ``solver_cls`` may be a configuration's ``class_type`` reference string.
+    """
+    from isaaclab.utils.string import string_to_callable  # noqa: PLC0415
+
+    if isinstance(solver_cls, str):
+        solver_cls = string_to_callable(solver_cls)
+    driver = object.__new__(solver_cls)
+    driver.cfg, driver.native = cfg, native
+    return driver

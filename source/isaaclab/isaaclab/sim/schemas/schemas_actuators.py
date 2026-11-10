@@ -26,19 +26,17 @@ import tempfile
 from typing import Any
 
 import torch
-from torch._export.converter import TS2EPConverter
 
 from pxr import Sdf, Usd, UsdPhysics
 
 from ...actuators.actuator_bam_cfg import BAM_DRIVE_API, BAM_MODEL_FLAGS, BamActuatorCfg
 from ...actuators.actuator_base import ActuatorBase
 from ...actuators.actuator_base_cfg import _is_implicit_actuator_cfg
-from ...actuators.actuator_compat import resolve_limit_aliases
 from ...actuators.actuator_net import ActuatorNetLSTM, ActuatorNetMLP
 from ...actuators.actuator_net_cfg import ActuatorNetLSTMCfg, ActuatorNetMLPCfg
 from ...actuators.actuator_pd import DCMotor, DelayedPDActuator, IdealPDActuator, RemotizedPDActuator
 from ...actuators.actuator_pd_cfg import DCMotorCfg, DelayedPDActuatorCfg, IdealPDActuatorCfg, RemotizedPDActuatorCfg
-from ...utils import clone, to_dict, validate
+from ...utils import to_dict, validate
 from ...utils.assets import retrieve_file_path
 from ...utils.backend_utils import FactoryBase
 from ...utils.string import _resolve_matching_values_dense, resolve_matching_names, string_to_callable, to_camel_case
@@ -229,11 +227,7 @@ def author_actuator_prims(
         if not joint_names:
             continue
 
-        resolved_cfg = clone(cfg)
-        # Collection construction emits the deprecation warning later in the
-        # normal asset lifecycle. Authoring only needs the normalized value.
-        resolve_limit_aliases(group_name, resolved_cfg, joint_names, warn_deprecated=False)
-        cfg_entries.append((group_name, resolved_cfg, joint_names))
+        cfg_entries.append((group_name, cfg, joint_names))
         for jname in joint_names:
             covered_joint_paths.add(joint_inventory[jname])
 
@@ -459,6 +453,9 @@ def resave_checkpoint_with_metadata(original_path: str, metadata: dict[str, Any]
     Returns:
         Path to the temporary ``.pt2`` checkpoint.
     """
+    # Deferred: importing the converter loads torch._dynamo, which adds seconds to every articulation spawn.
+    from torch._export.converter import TS2EPConverter  # noqa: PLC0415
+
     local_path = retrieve_file_path(original_path)
 
     extra_files: dict[str, str] = {"metadata.json": ""}
